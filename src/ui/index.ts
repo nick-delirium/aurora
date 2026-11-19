@@ -2,6 +2,7 @@
  * UI layer entry point. Everything under src/ui is Svelte and talks to the rest
  * of the app only through AppAPI (src/app/api.ts) — swap or redesign freely.
  */
+import '@nick-delirium/liquid-glass/glass.css';
 import { mount } from 'svelte';
 import type { AppAPI } from '../app/api';
 import App from './App.svelte';

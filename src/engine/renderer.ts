@@ -1,7 +1,10 @@
 import type { Size } from '../core/devices';
 import type { Rect } from '../core/frame';
 import type { SceneUniforms } from './scene';
-import { COMPOSITE_FRAG, FRAG, VERT } from './shaders';
+import { BackdropTarget, GlassCompositor, MAX_LENSES, createProgram, type Lens } from '@nick-delirium/liquid-glass';
+import { FRAG } from './shaders';
+
+export type { Lens };
 
 const UNIFORMS = [
   'u_origin', 'u_scale', 'u_target', 'u_seed', 'u_wFreq', 'u_wPhase', 'u_wAmp', 'u_wSpeed', 'u_tilt', 'u_time',
@@ -9,49 +12,10 @@ const UNIFORMS = [
   'u_intensity', 'u_grain', 'u_grainSize', 'u_bg', 'u_bgPos', 'u_glow', 'u_core', 'u_under', 'u_debug',
 ] as const;
 
-const COMPOSITE_UNIFORMS = [
-  'u_frame', 'u_size', 'u_lensCount', 'u_lensRect', 'u_lensShape', 'u_lensLight', 'u_lensBlur',
-] as const;
-
-export const MAX_LENSES = 6;
 
 /** ?debug=stripes — preview shows stripes, to judge glass refraction. Never affects exports. */
 const DEBUG_STRIPES = new URLSearchParams(location.search).get('debug') === 'stripes';
 type UniformName = (typeof UNIFORMS)[number];
-type CompositeUniform = (typeof COMPOSITE_UNIFORMS)[number];
-
-/**
- * A glass panel drawn into the preview (never into exports). Geometry in CSS px,
- * viewport coordinates (top-left origin) — straight from getBoundingClientRect.
- */
-export interface Lens {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  radius: number;
-  /** Width of the curved rim, px. */
-  bezel: number;
-  /** Height of the glass edge, px — taller bends more. */
-  thickness: number;
-  /** 0..0.3 — how differently R/G/B bend. */
-  aberration: number;
-  /** 0..1 rim highlight strength. */
-  specular: number;
-  /** Light direction in degrees, screen space (y down). -120 = from top-left. */
-  lightAngle: number;
-  /** Blur radius behind the glass, px. */
-  blur: number;
-  /** 0..1 — fades the whole effect (e.g. while the panel fades out). */
-  strength: number;
-}
-
-interface Target {
-  fbo: WebGLFramebuffer;
-  tex: WebGLTexture;
-  width: number;
-  height: number;
-}
 
 /**
  * WebGL2 renderer. Renders on demand: the preview is redrawn only when the
@@ -62,10 +26,9 @@ export class Renderer {
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram | null = null;
   private loc = {} as Record<UniformName, WebGLUniformLocation | null>;
-  private composite: WebGLProgram | null = null;
-  private cloc = {} as Record<CompositeUniform, WebGLUniformLocation | null>;
-  /** Offscreen copy of the wallpaper the glass pass samples (only while glass is on screen). */
-  private offscreen: Target | null = null;
+  /** Glass: the wallpaper renders into this mipmapped target, then the compositor refracts it. */
+  private backdrop: BackdropTarget | null = null;
+  private compositor: GlassCompositor | null = null;
   private scene: SceneUniforms | null = null;
   private frame: Rect = { x: 0, y: 0, width: 1, height: 1 };
   private target: Size = { width: 1, height: 1 };
@@ -73,10 +36,6 @@ export class Renderer {
   private raf = 0;
   private lost = false;
   private lenses: Lens[] = [];
-  private lensRect = new Float32Array(MAX_LENSES * 4);
-  private lensShape = new Float32Array(MAX_LENSES * 4);
-  private lensLight = new Float32Array(MAX_LENSES * 4);
-  private lensBlur = new Float32Array(MAX_LENSES);
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -101,7 +60,6 @@ export class Renderer {
     });
     canvas.addEventListener('webglcontextrestored', () => {
       this.lost = false;
-      this.offscreen = null;
       this.init();
       this.requestRender();
     });
@@ -110,71 +68,10 @@ export class Renderer {
 
   private init(): void {
     const gl = this.gl;
-    const compile = (type: number, src: string) => {
-      const sh = gl.createShader(type)!;
-      gl.shaderSource(sh, src);
-      gl.compileShader(sh);
-      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-        const log = gl.getShaderInfoLog(sh);
-        gl.deleteShader(sh);
-        throw new Error(`Shader compile failed: ${log}`);
-      }
-      return sh;
-    };
-    const link = (frag: string) => {
-      const prog = gl.createProgram()!;
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
-      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-        throw new Error(`Program link failed: ${gl.getProgramInfoLog(prog)}`);
-      }
-      return prog;
-    };
-    this.program = link(FRAG);
+    this.program = createProgram(gl, FRAG);
     for (const name of UNIFORMS) this.loc[name] = gl.getUniformLocation(this.program, name);
-    this.composite = link(COMPOSITE_FRAG);
-    for (const name of COMPOSITE_UNIFORMS) this.cloc[name] = gl.getUniformLocation(this.composite, name);
-  }
-
-  /** Mipmapped render target matching the canvas (recreated on resize). */
-  private ensureOffscreen(): Target | null {
-    const gl = this.gl;
-    const { width, height } = this.canvas;
-    const cur = this.offscreen;
-    if (cur && cur.width === width && cur.height === height) return cur;
-    if (cur) {
-      gl.deleteFramebuffer(cur.fbo);
-      gl.deleteTexture(cur.tex);
-    }
-    const tex = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    const levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
-    gl.texStorage2D(gl.TEXTURE_2D, levels, gl.RGBA8, width, height);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    const fbo = gl.createFramebuffer()!;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-    const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    if (!ok) {
-      gl.deleteFramebuffer(fbo);
-      gl.deleteTexture(tex);
-      this.offscreen = null;
-      return null;
-    }
-    this.offscreen = { fbo, tex, width, height };
-    return this.offscreen;
-  }
-
-  private releaseOffscreen(): void {
-    if (!this.offscreen) return;
-    this.gl.deleteFramebuffer(this.offscreen.fbo);
-    this.gl.deleteTexture(this.offscreen.tex);
-    this.offscreen = null;
+    this.backdrop = new BackdropTarget(gl);
+    this.compositor = new GlassCompositor(gl);
   }
 
   /** Match the drawing buffer to the canvas' CSS size × devicePixelRatio. */
@@ -233,9 +130,9 @@ export class Renderer {
     const scale = this.target.width / (this.frame.width * sx);
 
     // No glass on screen: one pass straight to the canvas.
-    const target = this.lenses.length ? this.ensureOffscreen() : null;
-    if (!target) {
-      if (!this.lenses.length) this.releaseOffscreen();
+    const glass = this.lenses.length > 0 && this.backdrop!.begin(c.width, c.height);
+    if (!glass) {
+      if (!this.lenses.length) this.backdrop?.dispose();
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, c.width, c.height);
       this.draw(this.scene, this.time, ox, oy, scale, this.target, true);
@@ -243,41 +140,10 @@ export class Renderer {
     }
 
     // Glass: wallpaper → mipmapped texture → composite (refraction, blur, light).
-    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
-    gl.viewport(0, 0, c.width, c.height);
     this.draw(this.scene, this.time, ox, oy, scale, this.target, true);
-    gl.bindTexture(gl.TEXTURE_2D, target.tex);
-    gl.generateMipmap(gl.TEXTURE_2D);
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const tex = this.backdrop!.end();
     gl.viewport(0, 0, c.width, c.height);
-    const count = this.packLenses(sx, sy);
-    const C = this.cloc;
-    gl.useProgram(this.composite);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, target.tex);
-    gl.uniform1i(C.u_frame, 0);
-    gl.uniform2f(C.u_size, c.width, c.height);
-    gl.uniform1i(C.u_lensCount, count);
-    gl.uniform4fv(C.u_lensRect, this.lensRect);
-    gl.uniform4fv(C.u_lensShape, this.lensShape);
-    gl.uniform4fv(C.u_lensLight, this.lensLight);
-    gl.uniform1fv(C.u_lensBlur, this.lensBlur);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-  }
-
-  /** CSS-px lenses → canvas-px uniforms (GL origin is bottom-left). Returns the count. */
-  private packLenses(sx: number, sy: number): number {
-    const H = this.canvas.height;
-    this.lenses.forEach((l, i) => {
-      const o = i * 4;
-      this.lensRect.set([l.x * sx, H - (l.y + l.height) * sy, l.width * sx, l.height * sy], o);
-      this.lensShape.set([l.radius * sx, l.bezel * sx, l.thickness * sx, l.strength], o);
-      const a = (l.lightAngle * Math.PI) / 180;
-      this.lensLight.set([l.aberration, l.specular, Math.cos(a), -Math.sin(a)], o);
-      this.lensBlur[i] = l.blur * sx;
-    });
-    return this.lenses.length;
+    this.compositor!.render(tex, this.lenses, { width: c.width, height: c.height, scaleX: sx, scaleY: sy });
   }
 
   private draw(

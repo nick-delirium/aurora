@@ -9,10 +9,10 @@
 import type { DeviceKind, Size } from '../core/devices';
 import type { FrameMode, Insets, Rect } from '../core/frame';
 import type { Params } from '../core/params';
-import type { Lens } from '../engine/renderer';
+import type { Lens } from '@nick-delirium/liquid-glass';
 
-/** A glass panel the engine draws under a UI element (see Lens). */
-export type GlassSpec = Lens;
+/** A glass pane the engine refracts the wallpaper through (CSS px, viewport coords). */
+export type GlassLens = Lens;
 
 export type Quality = 'native' | '4k' | 'max';
 export type Format = 'png' | 'jpeg';
@@ -40,6 +40,9 @@ export interface AppState {
   live: boolean;
   /** Live playback speed multiplier. */
   speed: number;
+  /** Undo/redo availability for the design (params). */
+  canUndo: boolean;
+  canRedo: boolean;
   view: ViewState;
 }
 
@@ -80,6 +83,9 @@ export interface AppAPI {
   randomPalette(): void;
   /** Reset adjustments to defaults, keeping seed + palette. */
   resetParams(): void;
+  /** Step back / forward through design changes. Returns false when there is nothing to do. */
+  undo(): boolean;
+  redo(): boolean;
   /** Move the pattern by a screen-space drag delta (CSS px). */
   panBy(dx: number, dy: number): void;
 
@@ -103,10 +109,10 @@ export interface AppAPI {
   getShareUrl(): string;
 
   /**
-   * Register (or update, or with null remove) a glass panel the engine refracts
-   * the wallpaper through. Preview only — never part of exports.
+   * The glass panes currently on screen; the engine refracts the wallpaper
+   * through them. Preview only — never part of exports.
    */
-  setGlass(id: string, spec: GlassSpec | null): void;
+  setGlass(lenses: GlassLens[]): void;
 }
 
 export const SPEED_RANGE = { min: 0.2, max: 4, step: 0.05, default: 1 } as const;

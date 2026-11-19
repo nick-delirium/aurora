@@ -26,6 +26,9 @@ npm run build       # type-check + production build in dist/
 Pushing to `main` deploys to GitHub Pages (`.github/workflows/deploy.yml`).
 How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+The liquid-glass effect is a standalone, reusable package:
+[`packages/liquid-glass`](packages/liquid-glass/README.md).
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE) — free for personal, hobby, research,
@@ -33,4 +36,3 @@ educational and other noncommercial use, including changing and sharing it.
 **Selling it or using it for any commercial purpose requires my written
 permission** — open an issue or contact [@nick-delirium](https://github.com/nick-delirium).
 
-Wallpapers you create with Aurora are yours to use.

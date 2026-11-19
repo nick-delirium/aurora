@@ -53,10 +53,18 @@ ships a small fixed set of sizes) and gives the real render resolution on
 Android, Mac and PC. Chromium on Android also reports the model name via
 User-Agent Client Hints. iPad targets are square so they survive rotation.
 
-### Liquid glass (`ui/glass.ts`, `engine/shaders.ts` → `COMPOSITE_FRAG`)
+### Liquid glass (`packages/liquid-glass`)
+
+The glass is a standalone, reusable package — see its
+[README](../packages/liquid-glass/README.md). Aurora consumes it from source via
+a Vite alias + TS path (`@nick-delirium/liquid-glass`): the engine renders the
+wallpaper into the package's `BackdropTarget` and composites with
+`GlassCompositor`; the UI tracks panes with `GlassTracker` (`ui/glass.ts`) and
+hands them to the engine through `app.setGlass()`.
+
 
 Glass panels that float over the wallpaper are **drawn by the engine**. The UI
-registers each panel's rounded rect via `app.setGlass()`. While any glass is on
+registers its panes via `app.setGlass()`. While any glass is on
 screen, the wallpaper renders into a mipmapped texture and a second, cheap pass
 composites it to the canvas: under each panel's rim it samples the texture at a
 refracted position (per colour channel), blurs via mip taps, and adds a rim
@@ -70,7 +78,7 @@ the rim is a convex squircle surface, vertical rays bend by Snell's law
 (IOR 1.5), offset ∝ glass height; R/G/B bend slightly differently (chromatic
 aberration); a light-angle rim highlight is screened on top.
 
-`ui/glass.ts` keeps engine rects aligned with the DOM: it re-measures every
+`GlassTracker` keeps engine rects aligned with the DOM: it re-measures every
 frame for a short window whenever something may move (CSS transitions, class or
 style mutations, Svelte intro/outro events, resizes) and only pushes changes.
 Opacity (including ancestors) fades the refraction with the element.

@@ -18,7 +18,6 @@ import {
   type AppAPI,
   type AppState,
   type Format,
-  type GlassSpec,
   type Quality,
   type QualityOption,
   type TargetGroup,
@@ -40,8 +39,9 @@ function qualityOptions(target: Size): QualityOption[] {
     if (w * h * s * s > maxArea) s = Math.sqrt(maxArea / (w * h));
     return s === 1 ? { width: w, height: h } : { width: even(w * s), height: even(h * s) };
   };
-  const opts: QualityOption[] = [{ id: 'native', label: 'Native', short: '1×', ...fit(1) }];
-  if (long < 3840 * 0.97) opts.push({ id: '4k', label: '4K', short: '4K', ...fit(3840 / long) });
+  // Named by purpose, not by marketing resolutions: "4K" for 1772×3840 was confusing.
+  const opts: QualityOption[] = [{ id: 'native', label: 'Exact', short: 'Exact', ...fit(1) }];
+  if (long < 3840 * 0.97) opts.push({ id: '4k', label: 'Sharper', short: 'Sharper', ...fit(3840 / long) });
   const max = fit(2);
   if (max.width > opts[opts.length - 1].width * 1.08) opts.push({ id: 'max', label: 'Max', short: 'Max', ...max });
   return opts;
@@ -51,7 +51,6 @@ export function createApp(renderer: Renderer): AppAPI {
   const device = detectDevice();
   let deviceLabel = device.label;
   let insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
-  const glassPanes = new Map<string, GlassSpec>();
 
   const resolveTarget = (s: Pick<AppState, 'targetId' | 'custom'>): TargetInfo => {
     if (s.targetId === 'custom') {
@@ -99,6 +98,8 @@ export function createApp(renderer: Renderer): AppAPI {
     deviceLabel,
     live: false,
     speed: SPEED_RANGE.default,
+    canUndo: false,
+    canRedo: false,
     view: computeView(base),
   });
 
@@ -177,15 +178,44 @@ export function createApp(renderer: Renderer): AppAPI {
   window.visualViewport?.addEventListener('resize', refreshView);
   window.addEventListener('orientationchange', () => setTimeout(refreshView, 250));
 
+  // ── Undo / redo: the design (params), not output settings. Rapid edits (a
+  // slider or wallpaper drag, incl. its glide) collapse into one step; discrete
+  // ones (shuffle, palette, toggles, reset) are a step each. The animation clock
+  // is never recorded. ──
+  const HISTORY = 100;
+  const COALESCE_MS = 700;
+  const undoStack: Params[] = [];
+  const redoStack: Params[] = [];
+  let lastEdit = 0;
+
+  const historyFlags = () => ({ canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
+
+  const edit = (next: Params, continuous: boolean) => {
+    const now = performance.now();
+    if (!continuous || now - lastEdit > COALESCE_MS) {
+      undoStack.push(store.get().params);
+      if (undoStack.length > HISTORY) undoStack.shift();
+      redoStack.length = 0;
+    }
+    lastEdit = continuous ? now : 0;
+    store.set({ params: next, ...historyFlags() });
+  };
+
+  const restore = (p: Params) => {
+    lastEdit = 0;
+    const s = store.get();
+    store.set({ params: { ...p, time: s.live ? clock : p.time }, ...historyFlags() });
+  };
+
   // Someone pasted a share link into the address bar.
   window.addEventListener('hashchange', () => {
     const h = decodeHash(location.hash);
     const s = store.get();
     const next = {
-      params: { ...s.params, ...h.params },
       targetId: validTarget(h.targetId) ? h.targetId! : s.targetId,
       custom: h.custom ?? s.custom,
     };
+    edit({ ...s.params, ...h.params }, false);
     store.set({ ...next, view: computeView(next) });
   });
 
@@ -198,10 +228,12 @@ export function createApp(renderer: Renderer): AppAPI {
     });
   }
 
+  const DISCRETE: (keyof Params)[] = ['palette', 'seed', 'grain', 'expand'];
   const setParams = (patch: Partial<Params>) => {
     const clean = sanitizeParams(patch);
-    if (!Object.keys(clean).length) return;
-    store.set({ params: { ...store.get().params, ...clean } });
+    const keys = Object.keys(clean) as (keyof Params)[];
+    if (!keys.length) return;
+    edit({ ...store.get().params, ...clean }, !keys.some((k) => DISCRETE.includes(k)));
   };
 
   const api: AppAPI = {
@@ -213,7 +245,22 @@ export function createApp(renderer: Renderer): AppAPI {
     randomPalette: () => setParams({ palette: `${GENERATED_PREFIX}${randomSeed()}` }),
     resetParams() {
       const { seed, palette } = store.get().params;
-      store.set({ params: { ...DEFAULT_PARAMS, seed, palette, time: clock } });
+      edit({ ...DEFAULT_PARAMS, seed, palette, time: clock }, false);
+    },
+
+    undo() {
+      const prev = undoStack.pop();
+      if (!prev) return false;
+      redoStack.push(store.get().params);
+      restore(prev);
+      return true;
+    },
+    redo() {
+      const next = redoStack.pop();
+      if (!next) return false;
+      undoStack.push(store.get().params);
+      restore(next);
+      return true;
     },
 
     setLive: (live) => store.set({ live }),
@@ -299,11 +346,7 @@ export function createApp(renderer: Renderer): AppAPI {
       return location.href;
     },
 
-    setGlass(id, spec) {
-      if (spec) glassPanes.set(id, spec);
-      else if (!glassPanes.delete(id)) return;
-      renderer.setLenses([...glassPanes.values()]);
-    },
+    setGlass: (lenses) => renderer.setLenses(lenses),
   };
   return api;
 }

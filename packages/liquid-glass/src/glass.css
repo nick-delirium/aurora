@@ -1,0 +1,108 @@
+/*
+ * liquid-glass material — the DOM layer of a glass pane.
+ *
+ *   <div class="lg-glass"> … </div>
+ *
+ * Untracked (or "lite" mode): CSS frosted glass — blur + saturate backdrop,
+ * rim light, specular sheen. Works anywhere.
+ * Tracked (the tracker adds .lg-lens): the WebGL compositor draws the
+ * refraction underneath, so the element only adds a faint tint, rim and shadow.
+ *
+ * Every rule is wrapped in :where() (zero specificity), so your own styles win.
+ *
+ * Custom properties:
+ *   --lg-radius   corner radius (default 28px)
+ *   --lg-tint     0–1 darkness of the tint (default 0.22 frosted / 0.12 lens)
+ *   --lg-tint-rgb tint colour as "r, g, b" (default 10, 12, 22)
+ *   --lg-blur     frosted blur (default 12px)
+ */
+
+:where(.lg-glass) {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--lg-radius, 28px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+    rgba(var(--lg-tint-rgb, 10, 12, 22), var(--lg-tint, 0.22));
+  -webkit-backdrop-filter: blur(var(--lg-blur, 12px)) saturate(170%) brightness(1.04);
+  backdrop-filter: blur(var(--lg-blur, 12px)) saturate(170%) brightness(1.04);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.1),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.1),
+    inset 0 0 22px -6px rgba(255, 255, 255, 0.16),
+    0 18px 50px -18px rgba(0, 0, 0, 0.55),
+    0 3px 10px -2px rgba(0, 0, 0, 0.18);
+}
+
+/* Rim light: a 1px gradient border, bright top-left and bottom-right. */
+:where(.lg-glass)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.14) 22%,
+    rgba(255, 255, 255, 0) 45%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.12) 80%,
+    rgba(255, 255, 255, 0.5) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* Specular sheen, under the content. */
+:where(.lg-glass)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 70% at 12% 0%, rgba(255, 255, 255, 0.13), transparent 60%),
+    radial-gradient(90% 60% at 100% 100%, rgba(255, 255, 255, 0.05), transparent 70%);
+}
+
+/* Lens: refraction comes from the WebGL compositor — no backdrop-filter, no inner glow. */
+:where(.lg-glass.lg-lens) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgba(var(--lg-tint-rgb, 10, 12, 22), var(--lg-tint, 0.12));
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.22),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
+    0 18px 50px -18px rgba(0, 0, 0, 0.55),
+    0 3px 10px -2px rgba(0, 0, 0, 0.18);
+}
+
+:where(.lg-glass.lg-lens)::before {
+  opacity: 0.28;
+}
+
+:where(.lg-glass.lg-lens)::after {
+  background: radial-gradient(120% 60% at 12% 0%, rgba(255, 255, 255, 0.07), transparent 55%);
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :where(.lg-glass) {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: rgba(28, 28, 32, 0.96);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+      0 18px 50px -18px rgba(0, 0, 0, 0.55);
+  }
+}

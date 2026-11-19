@@ -19,10 +19,16 @@
     "verbatimModuleSyntax": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@nick-delirium/liquid-glass": [
+        "./packages/liquid-glass/src/index.ts"
+      ]
+    }
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.svelte"
+    "src/**/*.svelte",
+    "packages/liquid-glass/src/**/*.ts"
   ]
 }

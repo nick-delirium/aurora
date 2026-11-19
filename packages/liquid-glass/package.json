@@ -1,0 +1,40 @@
+{
+  "name": "@nick-delirium/liquid-glass",
+  "version": "0.1.0",
+  "description": "Refracting liquid-glass panes over a WebGL background — Snell's-law rims, chromatic aberration, blur, rim light. Framework-agnostic, works in every browser including iOS Safari.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "nick-delirium (https://github.com/nick-delirium)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nick-delirium/aurora.git",
+    "directory": "packages/liquid-glass"
+  },
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./glass.css": "./dist/glass.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp src/glass.css dist/glass.css",
+    "demo": "vite demo"
+  },
+  "keywords": [
+    "liquid-glass",
+    "glassmorphism",
+    "webgl",
+    "refraction",
+    "shader",
+    "ui"
+  ]
+}

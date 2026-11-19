@@ -167,7 +167,7 @@
   }
 
   .inline output {
-    font-size: 11.5px;
+    font-size: 12px;
   }
 
   .slider {
@@ -231,7 +231,7 @@
   }
 
   /* Where the SVG lens isn't available (WebKit, Firefox), a CSS approximation. */
-  .active .thumb:not(:global(.is-refractive)) {
+  .active .thumb:not(:global(.lg-refractive)) {
     -webkit-backdrop-filter: saturate(1.6) brightness(1.12);
     backdrop-filter: saturate(1.6) brightness(1.12);
   }

@@ -34,6 +34,29 @@
   let hint = $state(false);
   let hintTimer = 0;
 
+  // The "touch to hide · drag to reposition" caption retires once you've done either.
+  const HINTED = 'aurora.hinted';
+  const readHinted = () => {
+    try {
+      return localStorage.getItem(HINTED) === '1';
+    } catch {
+      return false;
+    }
+  };
+  let hinted = $state(readHinted());
+  function markHinted() {
+    if (hinted) return;
+    hinted = true;
+    try {
+      localStorage.setItem(HINTED, '1');
+    } catch {
+      /* private mode: just keep it for this session */
+    }
+  }
+
+  const quality = $derived.by(() => (void s.targetId, void s.custom, void s.quality, app.getQualityOptions()));
+  const output = $derived(quality.find((q) => q.id === s.quality) ?? quality[0]);
+
   const target = $derived.by(() => (void s.targetId, void s.custom, void s.deviceLabel, app.getTarget()));
   const frame = $derived(s.view.frame);
   const frameRadius = $derived.by(() => {
@@ -50,6 +73,7 @@
 
   function toggleHidden() {
     hidden = !hidden;
+    if (hidden) markHinted();
     clearTimeout(hintTimer);
     hint = hidden && (coarse.current || layout === 'bottom');
     if (hint) hintTimer = window.setTimeout(() => (hint = false), 3800);
@@ -120,7 +144,10 @@
 
   function pmove(e: PointerEvent) {
     if (e.pointerId !== pointer) return;
-    if (!dragging && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) dragging = true;
+    if (!dragging && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) {
+      dragging = true;
+      markHinted();
+    }
     if (!dragging) return;
     const now = performance.now();
     const dx = e.clientX - last.x;
@@ -160,16 +187,36 @@
   };
 
   function onKey(e: KeyboardEvent) {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
     const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable);
+    if (typing || sheet) return;
+    // ⌘Z / Ctrl+Z undo, ⇧⌘Z / Ctrl+Y redo.
+    if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+      const k = e.key.toLowerCase();
+      if (k === 'z' || k === 'y') {
+        e.preventDefault();
+        if (k === 'y' || e.shiftKey) app.redo();
+        else app.undo();
+      }
+      return;
+    }
+    if (e.altKey) return;
+    // Space only when nothing is focused — inside a control it belongs to the control.
+    const onPage = !t || t === document.body || t.classList.contains('gesture');
     if (e.key === 'h' || e.key === 'H') toggleHidden();
     else if (e.key === 'r' || e.key === 'R') app.shuffle();
-    else if (e.key === 'l' || e.key === 'L' || (e.key === ' ' && t?.tagName !== 'BUTTON')) {
+    else if (e.key === 'l' || e.key === 'L' || (e.key === ' ' && onPage)) {
       e.preventDefault();
       app.setLive(!s.live);
-    } else return;
+    }
   }
+
+  // Where to set it, per platform (shown after a desktop save).
+  const setItHint = /Mac OS X|Macintosh/.test(navigator.userAgent)
+    ? 'System Settings → Wallpaper → Add Photo'
+    : /Windows/.test(navigator.userAgent)
+      ? 'Settings → Personalization → Background'
+      : 'your system’s wallpaper settings';
 
   function deliver(res: ExportResult) {
     if (coarse.current) {
@@ -182,7 +229,7 @@
     document.body.append(a);
     a.click();
     a.remove();
-    toast(`Saved ${res.width} × ${res.height} ${res.mime === 'image/png' ? 'PNG' : 'JPEG'}`);
+    toast(`Downloaded ${res.filename} — set it in ${setItHint}`, { ms: 6000 });
     setTimeout(() => URL.revokeObjectURL(res.url), 60_000);
   }
 
@@ -213,17 +260,27 @@
       style:height="{frame.height}px"
       style:--r="{frameRadius}px"
     >
-      <div class="frame-label">{target.label} · {target.width} × {target.height}</div>
+      <div class="frame-label">{target.label} · saves {output.width} × {output.height}</div>
     </div>
   {/if}
 
   {#key layout}
-    <Panel {app} {s} {layout} {measure} onhide={toggleHidden} ondeliver={deliver} onsave={() => (sheet = { initial: null })} />
+    <Panel
+      {app}
+      {s}
+      {layout}
+      {measure}
+      inert={hidden || !!sheet}
+      showCaption={!hinted}
+      onhide={toggleHidden}
+      ondeliver={deliver}
+      onsave={() => (sheet = { initial: null })}
+    />
   {/key}
 
   {#if layout === 'side'}
     <button
-      class="show glass"
+      class="show lg-glass"
       title="Show controls (H)"
       aria-label="Show controls"
       tabindex={hidden ? 0 : -1}
@@ -236,7 +293,7 @@
 
   {#if hint}
     <div
-      class="hint glass"
+      class="hint lg-glass"
       role="status"
       transition:fly={{ y: 16, duration: 400, easing: backOut }}
       {@attach glass({ bezel: 18, thickness: 32, aberration: 0.05, specular: 0.35, blur: 3 })}
@@ -294,7 +351,7 @@
   }
 
   .show {
-    --g-radius: 99px;
+    --lg-radius: 99px;
     position: absolute;
     top: 16px;
     right: 16px;
@@ -320,7 +377,7 @@
   }
 
   .hint {
-    --g-radius: 22px;
+    --lg-radius: 22px;
     position: absolute;
     left: 50%;
     bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));

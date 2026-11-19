@@ -16,6 +16,19 @@
   let root: HTMLDivElement;
 
   const isGenerated = $derived(value.startsWith(GENERATED_PREFIX));
+  // Radio-group keyboard pattern: one Tab stop (the selected swatch), arrows move.
+  const ids = PALETTES.map((p) => p.id);
+  const current = $derived(isGenerated ? ids.length : Math.max(0, ids.indexOf(value)));
+  function key(e: KeyboardEvent) {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const n = ids.length + 1; // + the random swatch
+    const next = (current + step + n) % n;
+    if (next === ids.length) onrandom();
+    else onselect(ids[next]);
+    requestAnimationFrame(() => root.querySelectorAll<HTMLElement>('.sw')[next]?.focus());
+  }
 
   // Keep the selected swatch visible in the scrolling row.
   $effect(() => {
@@ -28,13 +41,14 @@
   });
 </script>
 
-<div bind:this={root} class="swatches" class:scroll role="radiogroup" aria-label="Palette">
-  {#each PALETTES as p (p.id)}
+<div bind:this={root} class="swatches" class:scroll role="radiogroup" aria-label="Palette" tabindex="-1" onkeydown={key}>
+  {#each PALETTES as p, i (p.id)}
     <button
       type="button"
       class="sw"
       role="radio"
       aria-checked={value === p.id}
+      tabindex={i === current ? 0 : -1}
       aria-label={p.name}
       title={p.name}
       style:--sw={gradient(p)}
@@ -46,6 +60,7 @@
     class="sw dice"
     role="radio"
     aria-checked={isGenerated}
+    tabindex={isGenerated ? 0 : -1}
     aria-label="Random palette"
     title="Random palette"
     style:--sw={isGenerated ? gradient(getPalette(value)) : null}

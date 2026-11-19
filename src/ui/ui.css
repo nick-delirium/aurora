@@ -1,15 +1,16 @@
 /*
- * Global UI tokens + the liquid-glass material. Component-specific styles live
- * in each .svelte file. Global rules use :where(#ui) so they stay at class-level
+ * Global UI tokens, buttons and chips. The glass material comes from
+ * @nick-delirium/liquid-glass/glass.css; component styles live in each .svelte file. Global rules use :where(#ui) so they stay at class-level
  * specificity and components can override them.
  */
 
 #ui {
   --ui-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
-  --ui-text: rgba(255, 255, 255, 0.97);
-  --ui-text-2: rgba(255, 255, 255, 0.74);
-  --ui-text-3: rgba(255, 255, 255, 0.52);
-  --ui-accent: #0a84ff;
+  --ui-text: #fff;
+  --ui-text-2: rgba(255, 255, 255, 0.9);
+  --ui-text-3: rgba(255, 255, 255, 0.76);
+  /* Focus: a white ring with a dark halo reads on any wallpaper (blue didn't on blue). */
+  --ui-accent: #fff;
   --ui-green: #34c759;
   --ease-spring: cubic-bezier(0.34, 1.45, 0.5, 1);
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -26,7 +27,20 @@
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
-  text-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.12);
+  /* Lifts glass text off bright wallpapers without darkening the glass itself. */
+  text-shadow:
+    0 0 1px rgba(0, 0, 0, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+:where(#ui) :focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+:where(#ui) ::selection {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 :where(#ui) *,
@@ -58,94 +72,7 @@
   }
 }
 
-/* ───────────────────────── Liquid glass material ─────────────────────────
- * Layers (back to front):
- *   backdrop-filter  – blur + saturate ("lite" only; lens panes are refracted by the engine)
- *   background       – faint tint so text stays legible on bright wallpapers
- *   ::after          – soft specular sheen, under the content (z-index -1)
- *   box-shadow       – inner rim light + outer drop shadow
- *   ::before         – 1px gradient rim, bright top-left / bottom-right like Apple's glass
- */
-:where(#ui) .glass {
-  position: relative;
-  isolation: isolate;
-  border-radius: var(--g-radius, 28px);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
-    rgba(14, 16, 28, var(--g-tint, 0.22));
-  -webkit-backdrop-filter: blur(12px) saturate(170%) brightness(1.04);
-  backdrop-filter: blur(12px) saturate(170%) brightness(1.04);
-  box-shadow:
-    inset 0 1px 0.5px rgba(255, 255, 255, 0.42),
-    inset 0 -1px 0.5px rgba(255, 255, 255, 0.1),
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.1),
-    inset 0 0 22px -6px rgba(255, 255, 255, 0.16),
-    0 18px 50px -18px rgba(0, 0, 0, 0.55),
-    0 3px 10px -2px rgba(0, 0, 0, 0.18);
-}
-
-:where(#ui) .glass::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  border-radius: inherit;
-  padding: 1px;
-  pointer-events: none;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.75) 0%,
-    rgba(255, 255, 255, 0.14) 22%,
-    rgba(255, 255, 255, 0) 45%,
-    rgba(255, 255, 255, 0) 60%,
-    rgba(255, 255, 255, 0.12) 80%,
-    rgba(255, 255, 255, 0.5) 100%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-}
-
-:where(#ui) .glass::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    radial-gradient(120% 70% at 12% 0%, rgba(255, 255, 255, 0.13), transparent 60%),
-    radial-gradient(90% 60% at 100% 100%, rgba(255, 255, 255, 0.05), transparent 70%);
-}
-
-/* Lens tier: the engine draws the refraction into the wallpaper under this
-   element (see glass.ts), so there is no backdrop-filter — the element only adds
-   a faint tint for legibility plus light. The shader draws a shape-aware rim
-   highlight, so the CSS rim steps back. */
-:where(#ui) .glass.is-lens {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  background: rgba(10, 12, 22, var(--g-tint, 0.12));
-  /* no inner glow: the shader's rim highlight is the only edge light */
-  box-shadow:
-    inset 0 1px 0.5px rgba(255, 255, 255, 0.22),
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
-    0 18px 50px -18px rgba(0, 0, 0, 0.55),
-    0 3px 10px -2px rgba(0, 0, 0, 0.18);
-}
-
-:where(#ui) .glass.is-lens::before {
-  opacity: 0.28;
-}
-
-:where(#ui) .glass.is-lens::after {
-  background: radial-gradient(120% 60% at 12% 0%, rgba(255, 255, 255, 0.07), transparent 55%);
-}
+/* Liquid glass material: @nick-delirium/liquid-glass/glass.css (class "lg-glass"). */
 
 /* ───────────────────────── Buttons ───────────────────────── */
 :where(#ui) .btn {
@@ -205,6 +132,12 @@
   background: rgba(255, 255, 255, 0.8);
 }
 
+:where(#ui) .btn:disabled:not(.btn-primary) {
+  opacity: 0.38;
+  cursor: default;
+  transform: none;
+}
+
 :where(#ui) .btn-icon {
   width: 44px;
   padding: 0;
@@ -251,6 +184,11 @@
     transform 0.35s var(--ease-spring);
 }
 
+:where(#ui) .chip[aria-expanded='true'] {
+  color: var(--ui-text);
+  background: rgba(255, 255, 255, 0.2);
+}
+
 :where(#ui) .chip[aria-pressed='true'] {
   color: var(--ui-text);
   background: rgba(255, 255, 255, 0.28);
@@ -282,17 +220,6 @@
 }
 
 /* ───────────────────────── Accessibility ───────────────────────── */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :where(#ui) .glass {
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-    background: rgba(28, 28, 32, 0.96);
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 255, 255, 0.4),
-      0 18px 50px -18px rgba(0, 0, 0, 0.55);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   :where(#ui) *,
   :where(#ui) *::before,

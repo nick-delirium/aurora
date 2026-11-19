@@ -45,15 +45,27 @@
     ro.observe(root);
     return () => ro.disconnect();
   });
+
+  // Radio-group keyboard pattern: one Tab stop, arrows move (and select).
+  const focusIndex = $derived(Math.max(0, options.findIndex((o) => o.id === value)));
+  function key(e: KeyboardEvent) {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step || !options.length) return;
+    e.preventDefault();
+    const next = options[(focusIndex + step + options.length) % options.length];
+    onchange(next.id);
+    requestAnimationFrame(() => root.querySelector<HTMLElement>(`button[data-id="${CSS.escape(next.id)}"]`)?.focus());
+  }
 </script>
 
-<div bind:this={root} class="seg" class:compact role="radiogroup" aria-label={label}>
+<div bind:this={root} class="seg" class:compact role="radiogroup" aria-label={label} tabindex="-1" onkeydown={key}>
   <span class="ind" class:animate style:width="{w}px" style:transform="translateX({x}px)" style:opacity={w ? 1 : 0}></span>
-  {#each options as o (o.id)}
+  {#each options as o, i (o.id)}
     <button
       type="button"
       role="radio"
       aria-checked={o.id === value}
+      tabindex={i === focusIndex ? 0 : -1}
       data-id={o.id}
       onclick={() => o.id !== value && onchange(o.id)}
     >
@@ -104,7 +116,7 @@
   }
 
   small {
-    font: 500 10.5px/1 var(--ui-font);
+    font: 500 12px/1 var(--ui-font);
     color: var(--ui-text-3);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;

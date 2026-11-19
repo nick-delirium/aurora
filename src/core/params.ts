@@ -54,8 +54,8 @@ export const PARAM_SPEC: Record<SliderParam, ParamSpec> = {
   amplitude: { label: 'Waviness', min: 0, max: 2, step: 0.01, format: mult },
   frequency: { label: 'Frequency', min: 0.3, max: 2.5, step: 0.01, format: mult },
   width: { label: 'Ribbon width', min: 0.3, max: 3, step: 0.01, format: mult },
-  reachUp: { label: 'Color reach ↑', min: 0.4, max: 3, step: 0.01, format: mult },
-  reachDown: { label: 'Color reach ↓', min: 0.4, max: 3, step: 0.01, format: mult },
+  reachUp: { label: 'Reach up', min: 0.4, max: 3, step: 0.01, format: mult },
+  reachDown: { label: 'Reach down', min: 0.4, max: 3, step: 0.01, format: mult },
   edgeDark: { label: 'Edge darkness', min: 0, max: 1, step: 0.01, format: pct },
   angle: { label: 'Angle', min: -90, max: 90, step: 1, format: deg },
   warp: { label: 'Turbulence', min: 0, max: 1, step: 0.01, format: pct },
@@ -66,6 +66,13 @@ export const PARAM_SPEC: Record<SliderParam, ParamSpec> = {
 };
 
 export const BASIC_PARAMS: SliderParam[] = ['posY', 'intensity'];
+
+/** Expert controls in small groups (≤5 each) so no screen shows a wall of sliders. */
+export const EXPERT_GROUPS: { id: string; label: string; params: SliderParam[] }[] = [
+  { id: 'shape', label: 'Shape', params: ['posX', 'amplitude', 'frequency', 'angle', 'warp'] },
+  { id: 'color', label: 'Color', params: ['width', 'variation', 'reachUp', 'reachDown', 'edgeDark'] },
+  { id: 'texture', label: 'Texture', params: ['vignette', 'grainAmount', 'grainSize'] },
+];
 export const EXPERT_PARAMS: SliderParam[] = [
   'posX',
   'amplitude',
